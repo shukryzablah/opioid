@@ -1,4 +1,5 @@
 # A Data-Backed, Visual Exploration of the Opioid Crisis
+A work by Shukry Zablah (szablah20@amherst.edu) and Raymond Nzaba (rsaitoti20@amherst.edu)
 
 Link to App: https://szablah.shinyapps.io/opioid/
 
