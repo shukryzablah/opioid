@@ -1,0 +1,13 @@
+name: opioid
+title: opioid
+username:
+account: szablah
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 335437
+bundleId: 2013764
+url: https://szablah.shinyapps.io/opioid/
+when: 1555363535.75764
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: Analyze.Rmd|handoutJ.pdf|leafletOutput.png|ll.png|Readin.Rmd|README.md|Wrangle.Rmd|writeup/Project_Writeup.html|writeup/Project_Writeup.pdf|writeup/Project_Writeup.Rmd|writeup/README.md

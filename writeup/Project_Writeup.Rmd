@@ -275,7 +275,7 @@ Below is a map that shows the top 10 counties that were most affected by the epi
 ```{r , analyze10, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
 ```
 
-![](../ll.png)
+![](./ll.png)
 
 
 The choropleth map below is shaded in propotion to the number of age adjusted deaths in all states in 2014. Some of the cities with the highest Opioid prescription rates were Sacramento (CA), Piedmont (SD) and Stringtown (OK).
