@@ -1,0 +1,166 @@
+---
+title: "Analyze"
+author: "Shukry Zablah"
+date: "April 28, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Be sure to run Readin.Rmd and Wrangle.Rmd before
+
+```{r, warnings = FALSE, message= FALSE}
+library(leaflet)
+library(plotly)
+library(RColorBrewer)
+```
+
+
+```{r analyze1}
+ageGroupsData %>%
+  filter(ageGroups != "NS", Year == 2016, drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)") %>%
+  group_by(Year, ageGroups) %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~ageGroups, y = ~TotalDeaths, type = "bar", name = "bargraph")
+```
+
+```{r}
+raceData %>%
+  filter(Year == 2016, drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)") %>%
+  group_by(Year, race) %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~race, y = ~TotalDeaths, type = "bar", color = ~race) 
+```
+
+
+```{r}
+genderData %>%
+  filter(Year == 2016, drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)") %>%
+  group_by(Year, gender) %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~gender, y = ~TotalDeaths, type = "bar", color = ~gender) 
+```
+
+```{r analyze2}
+ageGroupsData %>%
+  group_by(ageGroups, Year) %>%
+  filter(drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)"|
+           drugAlcoholInducedCause == "All other drug-induced causes"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Suicide (X60-X64)"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Undetermined (Y10-Y14)") %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~Year, y = ~TotalDeaths, type = 'scatter', color = ~ageGroups, mode = "lines+markers") 
+```
+```{r}
+raceData %>%
+  group_by(race, Year) %>%
+  filter(drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)"|
+           drugAlcoholInducedCause == "All other drug-induced causes"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Suicide (X60-X64)"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Undetermined (Y10-Y14)") %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~Year, y = ~TotalDeaths, type = 'scatter', color = ~race, mode = "lines+markers") 
+```
+
+
+```{r}
+genderData %>%
+  group_by(gender, Year) %>%
+  filter(drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)"|
+           drugAlcoholInducedCause == "All other drug-induced causes"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Suicide (X60-X64)"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Undetermined (Y10-Y14)") %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~Year, y = ~TotalDeaths, type = 'scatter', color = ~gender, mode = "lines+markers") 
+
+```
+
+```{r analyze3}
+myTemp <- ageGroupsData %>%
+  group_by(County) %>%
+  summarize(NumObs = n(), SumDeaths = sum(Deaths), avgLong = mean(longitude), avgLat = mean(latitude)) %>%
+  arrange(desc(SumDeaths)) %>%
+  head(25)
+myTemp
+
+leaflet(myTemp) %>%
+  addTiles() %>%
+  addCircles(lng = ~avgLong, lat = ~avgLat, radius = ~SumDeaths/100) %>%
+  setView(lng = -91.39, lat = 38.42, zoom = 5)
+```
+
+
+```{r analyze4}
+PState_wrangled %>% 
+  filter(State=="Wyoming") %>% 
+ggplot(.,aes(x=Year,y=Crude_Death_Rate,color=Sex))+geom_line()+facet_wrap(~Race)
+```
+
+```{r analyze5}
+# give state boundaries a white border
+l <- list(color = toRGB("white"), width = 2)
+
+# specify some map projection/options
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white')
+)
+
+#clean table containing state abbreviations
+stateabbr <- stateabbr %>% 
+  select(code,state)
+
+#Consolidate zipcode and prescribing rate data, death and drug info
+rates<-rates %>% 
+  left_join(zip_codes,by=c("NPPES_zip_code" = "zip_code")) %>% 
+  na.omit() %>% 
+  group_by(state) %>% 
+  summarize(count=n(), Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count)
+
+#Wrangle state death records to display on map
+PS<-PState_wrangled %>%
+  filter(Year==2014) %>% 
+  group_by(State) %>% 
+  summarize(count=n(),Crude_Death_Rate=sum(Crude_Death_Rate)/count,
+            Age_Adjusted_Rate=sum(Age_Adjusted_Rate)/count) %>% 
+  filter(State!="United States") %>% 
+  left_join(stateabbr,by=c("State" = "state")) %>% 
+  select(State,Crude_Death_Rate,code,Age_Adjusted_Rate) %>% 
+  mutate(code=replace(code, State=="California", "CA"),Crude_Death_Rate=round(Crude_Death_Rate, 1),
+         Age_Adjusted_Rate=round(Age_Adjusted_Rate, 1))%>% 
+  left_join(rates,by=c("code" = "state"))%>% 
+  mutate(Opioid_Prescribing_Rate=round(Opioid_Prescribing_Rate,1))
+
+  
+#Customize tooltip
+PS$hover <- with(PS, paste(State,'<br>',"Crude death rate:", Crude_Death_Rate,'<br>',"Opioid Prescribing Rate", Opioid_Prescribing_Rate,'<br>',"<br>"))
+
+
+#Make plot
+plot_geo(PS, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~Age_Adjusted_Rate, text = ~hover, locations = ~code,
+    color = ~Age_Adjusted_Rate, colors = 'Purples'
+  ) %>%
+  colorbar(title = "Rate") %>%
+  layout(
+    title = 'Average death rates breakdown <br>(Hover for breakdown)',
+    geo = g
+  )
+```
+
+```{r analyze6}
+br_down<-PState_wrangled %>%
+  filter(State=="United States") %>% 
+  group_by(State) 
+
+#Countrywide breakdown by race
+br_down %>%
+  filter(Sex=="Female",Age_Group=="All Ages") %>% 
+ggplot(.,aes(x=Year,y=Crude_Death_Rate))+geom_line()+facet_wrap(~Race)
+
+```

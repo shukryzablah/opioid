@@ -1,0 +1,628 @@
+---
+title: "Making Sense of The Opioid Crisis"
+author: "Ray Nzaba and Shukry Zablah"
+date: "May 3, 2018"
+output:
+  html_document:
+    fig_height: 5
+    fig_width: 7
+  pdf_document:
+    fig_height: 7.5
+    fig_width: 7
+  word_document:
+    fig_height: 3
+    fig_width: 5
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+library(mdsr)   # Load additional packages here 
+knitr::opts_chunk$set(
+  tidy=FALSE,     # display code as typed
+  size="small",warning=FALSE, message=FALSE)
+```
+
+```{r import01, eval = T, echo=FALSE}
+#Imports necessary packages
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(stringr)
+library(maps)
+library(ggmap)
+library(mapproj)
+library(leaflet)
+library(httr)
+library(plotly)
+library(leaflet)
+library(plotly)
+library(RColorBrewer)
+library(webshot)
+```
+
+```{r readin01, warning = FALSE, message = FALSE, eval=T,echo=FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Age Groups for 1999-2016
+YearCountyCauseAgeGroupsAllYears <- as_tibble()
+for (year in 1999:2016) {
+  YearCountyCauseAgeGroupsAllYears <- rbind(YearCountyCauseAgeGroupsAllYears,
+                                            read_csv(paste0("../Data/WonderData/YearCountyCauseAgeGroups",year,".csv")))
+}
+```
+
+```{r readin02, warning = FALSE, message = FALSE, eval=T, echo=FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Gender for 1999-2016
+YearCountyCauseGenderAllYears  <- as_tibble()
+for (part in 1:9) {
+  YearCountyCauseGenderAllYears <- rbind(YearCountyCauseGenderAllYears,
+                                         read_csv(paste0("../Data/WonderData/YearCountyCauseGender10States",part,".csv")))
+}
+```
+
+```{r readin03, warning = FALSE, message = FALSE, eval=T, echo=FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Race for 1999-2016
+YearCountyCauseRaceHomicideAllYears  <- as_tibble()
+for (part in 1:6) {
+  YearCountyCauseRaceHomicideAllYears <- rbind(YearCountyCauseRaceHomicideAllYears,
+                                         read_csv(paste0("../Data/WonderData/YearCountyCauseRaceHomicideAllYears10States",part,".csv")))
+}
+
+#Reads in the data that is grouped by Year, County, Drug Cause, and Race for 1999-2016
+YearCountyCauseRaceAllYears <- rbind(read_csv("../Data/WonderData/YearCountyCauseRaceUndeterminedAllYears.csv"),
+                                     read_csv("../Data/WonderData/YearCountyCauseRaceSuicidesAllYears.csv"),
+                                     read_csv("../Data/WonderData/YearCountyCauseRaceUnintentional1999-2007.csv"),
+                                     read_csv("../Data/WonderData/YearCountyCauseRaceUnintentional2008-2016.csv"),
+                                     YearCountyCauseRaceHomicideAllYears)
+```
+
+```{r readin04, warning = FALSE, message = FALSE, eval=T, echo=FALSE}
+X2015_Gaz_counties_national <- read_csv("../Data/WonderData/2015_Gaz_counties_national.csv")
+```
+
+```{r readin05, warning = FALSE, message = FALSE, eval=T,echo=FALSE}
+PState <- read_csv("../Data/Drug_Poisoning_Mortality_by_State__United_States.csv")
+prescription<- read_csv("../Data/Opioid analgesic prescriptions dispensed from US retail pharmacies, Q4 2009-Q2 2015.csv")
+zip_codes <- read_csv("../Data/zip_codes_states.csv")
+stateabbr <- read.csv("https://raw.githubusercontent.com/plotly/datasets/master/2011_us_ag_exports.csv")
+load("../Data/prescriber.Rda")
+```
+
+```{r wrangle01, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+#cleans up the data that has age groups
+ageGroupsData <- YearCountyCauseAgeGroupsAllYears %>% 
+  mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),   
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population)) %>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         ageGroups = `Ten-Year Age Groups Code`,
+         latitude = INTPTLAT,
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, ageGroups, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, latitude, longitude) %>%
+  mutate(State = str_trim(State),
+         ageGroups = ifelse(ageGroups == "1", "<1", ageGroups),
+         ageGroups = factor(ageGroups, levels = c("<1", "1-4", "5-14", "15-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75-84", "85+")))
+```
+
+```{r wrangle02, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+#cleans up the data that has gender
+genderData <- YearCountyCauseGenderAllYears %>%
+   mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),   
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population),
+         ageAdjRate = parse_number(`Age Adjusted Rate`),
+         gender = as.factor(Gender))%>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         latitude = INTPTLAT,
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, ageAdjRate, gender, latitude, longitude) %>%
+  mutate(State = str_trim(State))
+```
+
+```{r wrangle03, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#cleans up the data that has race
+raceData <- YearCountyCauseRaceAllYears %>%
+  mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),  
+         Year = parse_number(Year),
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population),
+         ageAdjRate = parse_number(`Age Adjusted Rate`),
+         ageAdjRateLowerConfint = parse_number(`Age Adjusted Rate Lower 95% Confidence Interval`),
+         ageAdjRateUpperConfint = parse_number(`Age Adjusted Rate Upper 95% Confidence Interval`),
+         race = as.factor(Race),
+         Deaths = parse_number(Deaths))%>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         latitude = INTPTLAT, 
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, ageAdjRate, ageAdjRateLowerConfint, ageAdjRateUpperConfint,race, latitude, longitude) %>%
+  mutate(State = str_trim(State))
+```
+
+```{r wrangle04, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#Select and rename relevant columns
+PState_wrangled <-PState %>% 
+  select(State,Year,Sex,`Age Group`,`Race and Hispanic Origin`,`Crude Death Rate` ,`Age-adjusted Rate`) %>% 
+  mutate(Age_Group=`Age Group`,Race=`Race and Hispanic Origin`,Crude_Death_Rate=`Crude Death Rate`,Age_Adjusted_Rate=`Age-adjusted Rate`) %>% 
+  select(-`Age Group`,-`Race and Hispanic Origin`,-`Crude Death Rate`,-`Age-adjusted Rate`) 
+```
+
+```{r wrangle05, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#Parse and make column names more readable
+presc<-prescription %>% 
+  mutate(Yearly_totals_all_opioid_analgesics = as.integer(`Yearly totals (All Opioid Analgesics)`),
+         Yearly_totals_HOTMF = as.integer(`Yearly totals (H+O+T+M+F)`),
+        Yearly_totals_HO = as.integer(`Yearly totals (H+O)`,
+        Yearly_totals_ER_LA_opioid_analgesics = as.integer(`Yearly totals (ER/LA Opioid Analgesics)`)))
+```
+
+```{r wrangle06, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#top opioid prescribers
+prescribers<-prescriber %>% 
+  separate(`Opioid Prescribing Rate`, c("Opioid_Prescribing_Rate","junk"), sep = "%") %>% 
+  mutate(Opioid_Prescribing_Rate=as.integer(Opioid_Prescribing_Rate)) %>% 
+  select(-junk,-NPI) %>% 
+  group_by(`Specialty Description`) %>% 
+  summarize(count = n(),Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  drop_na() %>% 
+  arrange(desc(Opioid_Prescribing_Rate)) %>% 
+  head(4)
+```
+
+```{r wrangle07, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+#opioid prescription rates by zip code
+rates<-prescriber %>% 
+  separate(`Opioid Prescribing Rate`, c("Opioid_Prescribing_Rate","junk"), sep = "%") %>% 
+  mutate(Opioid_Prescribing_Rate=as.integer(Opioid_Prescribing_Rate),
+         NPPES_zip_code=as.character(`NPPES Provider Zip Code`)) %>% 
+  select(-junk,-NPI,-`NPPES Provider Zip Code`) %>% 
+  group_by(NPPES_zip_code) %>% 
+  summarize(count=n(),Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  arrange(desc(Opioid_Prescribing_Rate)) 
+```
+
+```{r wrangle08, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#clean table containing state abbreviations
+stateabbr <- stateabbr %>% 
+  select(code,state)
+```
+
+```{r wrangle09, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#Consolidate zipcode and prescribing rate data, death and drug info
+rates<-rates %>% 
+  left_join(zip_codes,by=c("NPPES_zip_code" = "zip_code")) %>% 
+  na.omit() %>% 
+  group_by(state) %>% 
+  summarize(count=n(), Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  arrange(desc(Opioid_Prescribing_Rate))
+```
+
+```{r wrangle010, message= FALSE, warning=FALSE, eval=T,echo=FALSE}
+#Wrangle state death records to display on map
+PS<-PState_wrangled %>%
+  filter(Year==2014) %>% 
+  group_by(State) %>% 
+  summarize(count=n(),Crude_Death_Rate=sum(Crude_Death_Rate)/count,
+            Age_Adjusted_Rate=sum(Age_Adjusted_Rate)/count) %>% 
+  filter(State!="United States") %>% 
+  left_join(stateabbr,by=c("State" = "state")) %>% 
+  select(State,Crude_Death_Rate,code,Age_Adjusted_Rate) %>% 
+  mutate(code=replace(code, State=="California", "CA"),Crude_Death_Rate=round(Crude_Death_Rate, 1),
+         Age_Adjusted_Rate=round(Age_Adjusted_Rate, 1))%>% 
+  left_join(rates,by=c("code" = "state"))%>% 
+  mutate(Opioid_Prescribing_Rate=round(Opioid_Prescribing_Rate,1))
+```
+
+    
+
+\pagebreak
+
+# Abstract
+
+According to the U.S. Drug Enforcement Administration, ["overdose deaths, particularly from prescription drugs and heroin, have reached epidemic levels"](https://www.dea.gov/docs/2015%20NDTA%20Report.pdf). From 1999 to 2016, more than 630,000 people have died from a drug overdose. On average, 115 Americans die every day from an opioid overdose.[$^1$](http://wonder.cdc.gov) 
+
+# Introduction
+
+Opioid abuse is a pervasive problem that has persisted and been responsible for the deaths of thousands and the decreasing life expectancy of Americans. While it is true that every strata of society is in danger from the effects of this epidemic, its effects vary widely across age groups and gender. This project is significant because it is an accessible way to know more about this silent disaster. The aim is that people that don’t know about the crisis will be able to talk knowledgeably about what it is and how it affects society, and that those who already know about it will be able to correct and enhance their understanding of the numbers behind the situation.
+
+The first wave began with increased prescribing of opioids in the 1990s[$^2$](https://www.annualreviews.org/doi/abs/10.1146/annurev-publhealth-031914-122957), with overdose deaths involving prescription opioids (natural and semi-synthetic opioids and methadone) increasing since at least 1999[$^3$](https://www.cdc.gov/drugoverdose/epidemic/index.html). The third wave began in 2013, with significant increases in overdose deaths involving synthetic opioids – particularly those involving illicitly-manufactured fentanyl (IMF). The IMF market continues to change, and IMF can be found in combination with heroin, counterfeit pills, and cocaine[$^4$](https://www.cdc.gov/drugoverdose/epidemic/index.html).
+
+## Data
+
+The data we used for our analysis was obtained from the following sources:
+
+1. [The CDC.](https://wonder.cdc.gov/) 
+This is an online database belonging to the CDC. It contains wide ranging data for Epidemiologic Research.
+We tried using R packages to query the website’s API, but they were not as user friendly as we hoped.
+Eventually we resorted to performing direct queries on the website itself, but this had its own limitations in
+terms of size. Forty queries were done (each had a limit of 75,000 lines) to obtain 1999 - 2016 data on drug
+poisoning mortality rates.
+
+2. [Data world website.](https://data.world/cms/e4ka-3ncx) 
+This dataset from the The Centers for Medicare & Medicaid Services contains the information on the
+individual opioid prescribing rates of health providers that participate in Medicare Part D program. This file
+provides data on the number and percentage of prescription claims (includes new prescriptions and refills) for
+opioid drugs, and contains information on each provider’s name, specialty, state, and ZIP code. Available documentation can be found [here](https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/Medicare-Provider-Charge-Data/Downloads/Prescriber_Methods.pdf).
+
+
+## Interesting findings:
+
+In the 2000s, the age groups that were most affected by drug related deaths were individuals that were 45 years or older. As the crisis expanded, and with the introduction of synthetic opioids such as Fentanyl in the early 2010s, the 25-34 age group became the most affected age group. Generally, all the age groups have experienced an upward trend, but this younger age group's change is a good insight to keep in mind when we are finding ways to implement policies to address the drug crisis. 
+
+The trends across different racial groups show that the opioid crisis has predominantly affected the White population of the United States. However, the fact that the Black community's deaths have more than sixtupled since 1999 cannot be overlooked. It is important to consider how the different races are affected by the problem. Additionaly, male mortality rate has stayed at a constant level above that of females with roughly twice as many deaths. 
+
+The problem is clearly a national problem, but it affects the young adult age group the most, and White people the most. Is the problem worse in certain regions of the country? 
+
+Below is a map that shows the top 10 counties that were most affected by the epidemic in 2016. The midwest seems to have been the most severely hit by the opioid epidemic. 
+
+
+```{r analyze7, message= FALSE, warning=FALSE, eval=T, echo=F}
+```
+
+
+```{r , analyze9, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+```
+
+```{r , analyze10, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+```
+
+![](../ll.png)
+
+
+The choropleth map below is shaded in propotion to the number of age adjusted deaths in all states in 2014. Some of the cities with the highest Opioid prescription rates were Sacramento (CA), Piedmont (SD) and Stringtown (OK).
+
+```{r , analyze11, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+```
+   
+```{r , analyze12, message= FALSE, warning=FALSE, eval=T, echo=FALSE}
+```
+
+## Limitations and conclusions:
+
+This research hones in on the casualties caused by drug poisoning and overdoses yet the opioid crisis is a multifaceted problem involving policing and a whole drug trafficking and distribution industry. More time and resources are needed to obtain data that would ideally enrich the perspectives on the problem presented herein. Information on drug prescriptions and arrest information would help break down this sensitive topic even more and show the true severity of the opioid epidemic. The app is posted on the internet and can be used by anyone as a tool to inform and educate.
+
+#Technical Appendix
+
+```{r import1, eval = FALSE}
+#Imports necessary packages
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(stringr)
+library(maps)
+library(ggmap)
+library(mapproj)
+library(leaflet)
+library(httr)
+library(plotly)
+library(leaflet)
+library(plotly)
+library(RColorBrewer)
+```
+
+```{r readin1, warning = FALSE, message = FALSE, eval=FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Age Groups for 1999-2016
+YearCountyCauseAgeGroupsAllYears <- as_tibble()
+for (year in 1999:2016) {
+  YearCountyCauseAgeGroupsAllYears <- rbind(YearCountyCauseAgeGroupsAllYears,
+                                            read_csv(paste0("../Data/WonderData/YearCountyCauseAgeGroups",year,".csv")))
+}
+```
+
+```{r readin2, warning = FALSE, message = FALSE, eval=FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Gender for 1999-2016
+YearCountyCauseGenderAllYears  <- as_tibble()
+for (part in 1:9) {
+  YearCountyCauseGenderAllYears <- rbind(YearCountyCauseGenderAllYears,
+                                         read_csv(paste0("../Data/WonderData/YearCountyCauseGender10States",part,".csv")))
+}
+```
+
+```{r readin3, warning = FALSE, message = FALSE, eval=FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Race for 1999-2016
+YearCountyCauseRaceHomicideAllYears  <- as_tibble()
+for (part in 1:6) {
+  YearCountyCauseRaceHomicideAllYears <- rbind(YearCountyCauseRaceHomicideAllYears,
+                                         read_csv(paste0("../Data/WonderData/YearCountyCauseRaceHomicideAllYears10States",part,".csv")))
+}
+
+#Reads in the data that is grouped by Year, County, Drug Cause, and Race for 1999-2016
+YearCountyCauseRaceAllYears <- rbind(read_csv("../Data/WonderData/YearCountyCauseRaceUndeterminedAllYears.csv"),
+                                     read_csv("../Data/WonderData/YearCountyCauseRaceSuicidesAllYears.csv"),
+                                     read_csv("../Data/WonderData/YearCountyCauseRaceUnintentional1999-2007.csv"),
+                                     read_csv("../Data/WonderData/YearCountyCauseRaceUnintentional2008-2016.csv"),
+                                     YearCountyCauseRaceHomicideAllYears)
+```
+
+```{r readin4, warning = FALSE, message = FALSE, eval=FALSE}
+X2015_Gaz_counties_national <- read_csv("../Data/WonderData/2015_Gaz_counties_national.csv")
+```
+
+```{r readin5, warning = FALSE, message = FALSE, eval=FALSE}
+PState <- read_csv("../Data/Drug_Poisoning_Mortality_by_State__United_States.csv")
+prescription<- read_csv("../Data/Opioid analgesic prescriptions dispensed from US retail pharmacies, Q4 2009-Q2 2015.csv")
+zip_codes <- read_csv("../Data/zip_codes_states.csv")
+stateabbr <- read.csv("https://raw.githubusercontent.com/plotly/datasets/master/2011_us_ag_exports.csv")
+load("../Data/prescriber.Rda")
+```
+
+```{r wrangle1, message= FALSE, warning=FALSE, eval=FALSE}
+#cleans up the data that has age groups
+ageGroupsData <- YearCountyCauseAgeGroupsAllYears %>% 
+  mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),   
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population)) %>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         ageGroups = `Ten-Year Age Groups Code`,
+         latitude = INTPTLAT,
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, ageGroups, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, latitude, longitude) %>%
+  mutate(State = str_trim(State),
+         ageGroups = ifelse(ageGroups == "1", "<1", ageGroups),
+         ageGroups = factor(ageGroups, levels = c("<1", "1-4", "5-14", "15-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75-84", "85+")))
+```
+
+```{r wrangle2, message= FALSE, warning=FALSE, eval=FALSE}
+#cleans up the data that has gender
+genderData <- YearCountyCauseGenderAllYears %>%
+   mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),   
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population),
+         ageAdjRate = parse_number(`Age Adjusted Rate`),
+         gender = as.factor(Gender))%>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         latitude = INTPTLAT,
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, ageAdjRate, gender, latitude, longitude) %>%
+  mutate(State = str_trim(State))
+```
+
+```{r wrangle3, message= FALSE, warning=FALSE, eval=FALSE}
+#cleans up the data that has race
+raceData <- YearCountyCauseRaceAllYears %>%
+  mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),  
+         Year = parse_number(Year),
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population),
+         ageAdjRate = parse_number(`Age Adjusted Rate`),
+         ageAdjRateLowerConfint = parse_number(`Age Adjusted Rate Lower 95% Confidence Interval`),
+         ageAdjRateUpperConfint = parse_number(`Age Adjusted Rate Upper 95% Confidence Interval`),
+         race = as.factor(Race),
+         Deaths = parse_number(Deaths))%>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         latitude = INTPTLAT, 
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, ageAdjRate, ageAdjRateLowerConfint, ageAdjRateUpperConfint,race, latitude, longitude) %>%
+  mutate(State = str_trim(State))
+```
+
+```{r wrangle4, message= FALSE, warning=FALSE, eval=FALSE}
+#Select and rename relevant columns
+PState_wrangled <-PState %>% 
+  select(State,Year,Sex,`Age Group`,`Race and Hispanic Origin`,`Crude Death Rate` ,`Age-adjusted Rate`) %>% 
+  mutate(Age_Group=`Age Group`,Race=`Race and Hispanic Origin`,Crude_Death_Rate=`Crude Death Rate`,Age_Adjusted_Rate=`Age-adjusted Rate`) %>% 
+  select(-`Age Group`,-`Race and Hispanic Origin`,-`Crude Death Rate`,-`Age-adjusted Rate`) 
+```
+
+```{r wrangle5, message= FALSE, warning=FALSE, eval=FALSE}
+#Parse and make column names more readable
+presc<-prescription %>% 
+  mutate(Yearly_totals_all_opioid_analgesics = as.integer(`Yearly totals (All Opioid Analgesics)`),
+         Yearly_totals_HOTMF = as.integer(`Yearly totals (H+O+T+M+F)`),
+        Yearly_totals_HO = as.integer(`Yearly totals (H+O)`,
+        Yearly_totals_ER_LA_opioid_analgesics = as.integer(`Yearly totals (ER/LA Opioid Analgesics)`)))
+```
+
+```{r wrangle6, message= FALSE, warning=FALSE, eval=FALSE}
+#top opioid prescribers
+prescribers<-prescriber %>% 
+  separate(`Opioid Prescribing Rate`, c("Opioid_Prescribing_Rate","junk"), sep = "%") %>% 
+  mutate(Opioid_Prescribing_Rate=as.integer(Opioid_Prescribing_Rate)) %>% 
+  select(-junk,-NPI) %>% 
+  group_by(`Specialty Description`) %>% 
+  summarize(count = n(),Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  drop_na() %>% 
+  arrange(desc(Opioid_Prescribing_Rate)) %>% 
+  head(4)
+```
+
+```{r wrangle7, message= FALSE, warning=FALSE, eval=FALSE}
+#opioid prescription rates by zip code
+rates<-prescriber %>% 
+  separate(`Opioid Prescribing Rate`, c("Opioid_Prescribing_Rate","junk"), sep = "%") %>% 
+  mutate(Opioid_Prescribing_Rate=as.integer(Opioid_Prescribing_Rate),
+         NPPES_zip_code=as.character(`NPPES Provider Zip Code`)) %>% 
+  select(-junk,-NPI,-`NPPES Provider Zip Code`) %>% 
+  group_by(NPPES_zip_code) %>% 
+  summarize(count=n(),Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  arrange(desc(Opioid_Prescribing_Rate)) 
+```
+
+```{r wrangle8, message= FALSE, warning=FALSE, eval=FALSE}
+#clean table containing state abbreviations
+stateabbr <- stateabbr %>% 
+  select(code,state)
+```
+
+```{r wrangle9, message= FALSE, warning=FALSE, eval=FALSE}
+#Consolidate zipcode and prescribing rate data, death and drug info
+rates<-rates %>% 
+  left_join(zip_codes,by=c("NPPES_zip_code" = "zip_code")) %>% 
+  na.omit() %>% 
+  group_by(state) %>% 
+  summarize(count=n(), Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  arrange(desc(Opioid_Prescribing_Rate)) %>% 
+  head(4)
+```
+
+```{r wrangle10, message= FALSE, warning=FALSE, eval=FALSE}
+#Wrangle state death records to display on map
+PS<-PState_wrangled %>%
+  filter(Year==2014) %>% 
+  group_by(State) %>% 
+  summarize(count=n(),Crude_Death_Rate=sum(Crude_Death_Rate)/count,
+            Age_Adjusted_Rate=sum(Age_Adjusted_Rate)/count) %>% 
+  filter(State!="United States") %>% 
+  left_join(stateabbr,by=c("State" = "state")) %>% 
+  select(State,Crude_Death_Rate,code,Age_Adjusted_Rate) %>% 
+  mutate(code=replace(code, State=="California", "CA"),Crude_Death_Rate=round(Crude_Death_Rate, 1),
+         Age_Adjusted_Rate=round(Age_Adjusted_Rate, 1))%>% 
+  left_join(rates,by=c("code" = "state"))%>% 
+  mutate(Opioid_Prescribing_Rate=round(Opioid_Prescribing_Rate,1))
+```
+
+```{r analyze1, message= FALSE, warning=FALSE, eval=FALSE}
+ageGroupsData %>%
+  filter(ageGroups != "NS", Year == 2016, drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)") %>%
+  group_by(Year, ageGroups) %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~ageGroups, y = ~TotalDeaths, type = "bar", name = "bargraph")
+```
+
+```{r analyze2, message= FALSE, warning=FALSE, eval=FALSE}
+raceData %>%
+  filter(Year == 2016, drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)") %>%
+  group_by(Year, race) %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~race, y = ~TotalDeaths, type = "bar", color = ~race) 
+```
+
+```{r analyze3, message= FALSE, warning=FALSE, eval=FALSE}
+genderData %>%
+  filter(Year == 2016, drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)") %>%
+  group_by(Year, gender) %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~gender, y = ~TotalDeaths, type = "bar", color = ~gender) 
+```
+
+```{r analyze4, message= FALSE, warning=FALSE, eval=FALSE}
+ageGroupsData %>%
+  group_by(ageGroups, Year) %>%
+  filter(drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)"|
+           drugAlcoholInducedCause == "All other drug-induced causes"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Suicide (X60-X64)"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Undetermined (Y10-Y14)") %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~Year, y = ~TotalDeaths, type = 'scatter', color = ~ageGroups, mode = "lines+markers") 
+```
+
+```{r analyze5, message= FALSE, warning=FALSE, eval=FALSE}
+raceData %>%
+  group_by(race, Year) %>%
+  filter(drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)"|
+           drugAlcoholInducedCause == "All other drug-induced causes"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Suicide (X60-X64)"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Undetermined (Y10-Y14)") %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~Year, y = ~TotalDeaths, type = 'scatter', color = ~race, mode = "lines+markers") 
+```
+
+
+```{r analyze6, message= FALSE, warning=FALSE, eval=FALSE}
+genderData %>%
+  group_by(gender, Year) %>%
+  filter(drugAlcoholInducedCause == "Drug poisonings (overdose) Unintentional (X40-X44)"|
+           drugAlcoholInducedCause == "All other drug-induced causes"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Suicide (X60-X64)"|
+           drugAlcoholInducedCause == "Drug poisonings (overdose) Undetermined (Y10-Y14)") %>%
+  summarize(numObs = n(), TotalDeaths = sum(Deaths)) %>%
+  plot_ly(x = ~Year, y = ~TotalDeaths, type = 'scatter', color = ~gender, mode = "lines+markers") 
+
+```
+
+```{r analyze7, message= FALSE, warning=FALSE, eval=FALSE}
+myTemp <- ageGroupsData %>%
+  group_by(County) %>%
+  summarize(NumObs = n(), SumDeaths = sum(Deaths), avgLong = mean(longitude), avgLat = mean(latitude)) %>%
+  arrange(desc(SumDeaths)) %>%
+  head(25)
+
+leaflet(myTemp) %>%
+  addTiles() %>%
+  addCircles(lng = ~avgLong, lat = ~avgLat, radius = ~SumDeaths/100) %>%
+  setView(lng = -91.39, lat = 38.42, zoom = 5)
+```
+
+
+```{r analyze8, message= FALSE, warning=FALSE, eval=FALSE}
+#Exploratory visual showing trends in single states
+PState_wrangled %>% 
+  filter(State=="Wyoming") %>% 
+ggplot(.,aes(x=Year,y=Crude_Death_Rate,color=Sex))+geom_line()+facet_wrap(~Race)
+```
+
+```{r analyze9, message= FALSE, warning=FALSE, eval=FALSE}
+# give state boundaries a white border
+l <- list(color = toRGB("white"), width = 2)
+```
+
+```{r analyze10, message= FALSE, warning=FALSE, eval=FALSE}
+# specify some map projection/options for plotly map
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white')
+)
+```
+
+```{r analyze11, message= FALSE, warning=FALSE, eval=FALSE}
+#Customize tooltip for death rates and prescriptions map
+PS$hover <- with(PS, paste(State,'<br>',"Crude death rate:", Crude_Death_Rate,'<br>',"Opioid Prescribing Rate", Opioid_Prescribing_Rate,'<br>',"<br>"))
+```
+
+
+
+
+```{r analyze12, message= FALSE, warning=FALSE, eval=FALSE}
+#Make death rates and prescriptions plot
+plot_geo(PS, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~Age_Adjusted_Rate, text = ~hover, locations = ~code,
+    color = ~Age_Adjusted_Rate, colors = 'Purples'
+  ) %>%
+  colorbar(title = "Rate") %>%
+  layout(
+    title = 'Average death rates breakdown ',
+    geo = g
+  )
+```
+
+```{r analyze13, message= FALSE, warning=FALSE, eval=FALSE}
+#Shows crude death rates by state
+br_down<-PState_wrangled %>%
+  filter(State=="United States") %>% 
+  group_by(State) 
+```
+
+```{r analyze14, message= FALSE, warning=FALSE, eval=FALSE}
+#Countrywide breakdown by race
+br_down %>%
+  filter(Sex=="Female",Age_Group=="All Ages") %>% 
+ggplot(.,aes(x=Year,y=Crude_Death_Rate))+geom_line()+facet_wrap(~Race)
+
+```
+
+ 
+

@@ -1,0 +1,70 @@
+---
+title: "EDA"
+author: "Shukry Zablah"
+date: "April 26, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r import}
+#Imports necessary packages
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(stringr)
+library(maps)
+library(ggmap)
+library(mapproj)
+library(leaflet)
+library(httr)
+library(plotly)
+```
+
+```{r readin1, warning = FALSE, message = FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Age Groups for 1999-2016
+YearCountyCauseAgeGroupsAllYears <- as_tibble()
+for (year in 1999:2016) {
+  YearCountyCauseAgeGroupsAllYears <- rbind(YearCountyCauseAgeGroupsAllYears,
+                                            read_csv(paste0("Data/WonderData/YearCountyCauseAgeGroups",year,".csv")))
+}
+```
+
+```{r readin2, warning = FALSE, message = FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Gender for 1999-2016
+YearCountyCauseGenderAllYears  <- as_tibble()
+for (part in 1:9) {
+  YearCountyCauseGenderAllYears <- rbind(YearCountyCauseGenderAllYears,
+                                         read_csv(paste0("Data/WonderData/YearCountyCauseGender10States",part,".csv")))
+}
+```
+
+```{r readin3, warning = FALSE, message = FALSE}
+#Reads in the data that is grouped by Year, County, Drug Cause, and Race for 1999-2016
+YearCountyCauseRaceHomicideAllYears  <- as_tibble()
+for (part in 1:6) {
+  YearCountyCauseRaceHomicideAllYears <- rbind(YearCountyCauseRaceHomicideAllYears,
+                                         read_csv(paste0("Data/WonderData/YearCountyCauseRaceHomicideAllYears10States",part,".csv")))
+}
+
+#Reads in the data that is grouped by Year, County, Drug Cause, and Race for 1999-2016
+YearCountyCauseRaceAllYears <- rbind(read_csv("Data/WonderData/YearCountyCauseRaceUndeterminedAllYears.csv"),
+                                     read_csv("Data/WonderData/YearCountyCauseRaceSuicidesAllYears.csv"),
+                                     read_csv("Data/WonderData/YearCountyCauseRaceUnintentional1999-2007.csv"),
+                                     read_csv("Data/WonderData/YearCountyCauseRaceUnintentional2008-2016.csv"),
+                                     YearCountyCauseRaceHomicideAllYears)
+```
+
+```{r readin4, warning = FALSE, message = FALSE}
+X2015_Gaz_counties_national <- read_csv("Data/WonderData/2015_Gaz_counties_national.csv")
+```
+
+```{r readin5, warning = FALSE, message = FALSE}
+PState <- read_csv("Data/Drug_Poisoning_Mortality_by_State__United_States.csv")
+prescription<- read_csv("Data/Opioid analgesic prescriptions dispensed from US retail pharmacies, Q4 2009-Q2 2015.csv")
+zip_codes <- read_csv("Data/zip_codes_states.csv")
+stateabbr <- read.csv("https://raw.githubusercontent.com/plotly/datasets/master/2011_us_ag_exports.csv")
+load("Data/prescriber.Rda")
+```

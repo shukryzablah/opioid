@@ -1,0 +1,115 @@
+---
+title: "Wrangle"
+author: "Shukry Zablah"
+date: "April 26, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Make sure to run Readin.Rmd first. 
+
+
+```{r wrangle1, message= FALSE, warning=FALSE}
+#cleans up the data that has age groups
+ageGroupsData <- YearCountyCauseAgeGroupsAllYears %>% 
+  mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),   
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population)) %>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         ageGroups = `Ten-Year Age Groups Code`,
+         latitude = INTPTLAT,
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, ageGroups, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, latitude, longitude) %>%
+  mutate(State = str_trim(State),
+         ageGroups = ifelse(ageGroups == "1", "<1", ageGroups),
+         ageGroups = factor(ageGroups, levels = c("<1", "1-4", "5-14", "15-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75-84", "85+")))
+```
+
+```{r wrangle2, message=FALSE, warning=FALSE}
+#cleans up the data that has gender
+genderData <- YearCountyCauseGenderAllYears %>%
+   mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),   
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population),
+         ageAdjRate = parse_number(`Age Adjusted Rate`),
+         gender = as.factor(Gender))%>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         latitude = INTPTLAT,
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, ageAdjRate, gender, latitude, longitude) %>%
+  mutate(State = str_trim(State))
+```
+
+```{r wrangle3, warning=FALSE, message = FALSE}
+#cleans up the data that has race
+raceData <- YearCountyCauseRaceAllYears %>%
+  mutate(percentTotalDeaths = parse_number(`% of Total Deaths`),  
+         Year = parse_number(Year),
+         crudeRateLower95Confint = parse_number(`Crude Rate Upper 95% Confidence Interval`),
+         crudeRateUpper95Confint = parse_number(`Crude Rate Lower 95% Confidence Interval`),
+         crudeRate = parse_number(`Crude Rate`),
+         population = parse_number(Population),
+         ageAdjRate = parse_number(`Age Adjusted Rate`),
+         ageAdjRateLowerConfint = parse_number(`Age Adjusted Rate Lower 95% Confidence Interval`),
+         ageAdjRateUpperConfint = parse_number(`Age Adjusted Rate Upper 95% Confidence Interval`),
+         race = as.factor(Race),
+         Deaths = parse_number(Deaths))%>%
+  separate(County, c("County", "State"), sep = ",") %>%
+  left_join(X2015_Gaz_counties_national, by = c("County" = "NAME")) %>%
+  rename(drugAlcoholInducedCause = `Drug/Alcohol Induced Cause`,
+         latitude = INTPTLAT, 
+         longitude = INTPTLONG) %>%
+  select(Year, County, State, drugAlcoholInducedCause, Deaths, population, crudeRate, crudeRateLower95Confint, crudeRateUpper95Confint, ageAdjRate, ageAdjRateLowerConfint, ageAdjRateUpperConfint,race, latitude, longitude) %>%
+  mutate(State = str_trim(State))
+```
+
+```{r wrangle4}
+#Select and rename relevant columns
+PState_wrangled <-PState %>% 
+  select(State,Year,Sex,`Age Group`,`Race and Hispanic Origin`,`Crude Death Rate` ,`Age-adjusted Rate`) %>% 
+  mutate(Age_Group=`Age Group`,Race=`Race and Hispanic Origin`,Crude_Death_Rate=`Crude Death Rate`,Age_Adjusted_Rate=`Age-adjusted Rate`) %>% 
+  select(-`Age Group`,-`Race and Hispanic Origin`,-`Crude Death Rate`,-`Age-adjusted Rate`) 
+```
+
+```{r wrangle5, message= FALSE, warning=FALSE}
+#Parse and make column names more readable
+presc<-prescription %>% 
+  mutate(Yearly_totals_all_opioid_analgesics = as.integer(`Yearly totals (All Opioid Analgesics)`),
+         Yearly_totals_HOTMF = as.integer(`Yearly totals (H+O+T+M+F)`),
+        Yearly_totals_HO = as.integer(`Yearly totals (H+O)`,
+        Yearly_totals_ER_LA_opioid_analgesics = as.integer(`Yearly totals (ER/LA Opioid Analgesics)`)))
+```
+
+```{r wrangle6}
+#top opioid prescribers
+prescribers<-prescriber %>% 
+  separate(`Opioid Prescribing Rate`, c("Opioid_Prescribing_Rate","junk"), sep = "%") %>% 
+  mutate(Opioid_Prescribing_Rate=as.integer(Opioid_Prescribing_Rate)) %>% 
+  select(-junk,-NPI) %>% 
+  group_by(`Specialty Description`) %>% 
+  summarize(count = n(),Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  drop_na() %>% 
+  arrange(desc(Opioid_Prescribing_Rate))
+
+#opioid prescription rates by zip code
+rates<-prescriber %>% 
+  separate(`Opioid Prescribing Rate`, c("Opioid_Prescribing_Rate","junk"), sep = "%") %>% 
+  mutate(Opioid_Prescribing_Rate=as.integer(Opioid_Prescribing_Rate),
+         NPPES_zip_code=as.character(`NPPES Provider Zip Code`)) %>% 
+  select(-junk,-NPI,-`NPPES Provider Zip Code`) %>% 
+  group_by(NPPES_zip_code) %>% 
+  summarize(count=n(),Opioid_Prescribing_Rate=sum(Opioid_Prescribing_Rate)/count) %>% 
+  arrange(desc(Opioid_Prescribing_Rate)) 
+```
+
